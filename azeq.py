@@ -181,57 +181,101 @@ def simpletest(do_savefig=True, do_showfig=True, savefig_file='./puffer.png'):
     if do_showfig:
         plt.show()
 
-def rotating_sequence(show_frames=False, save_frames=True, 
+def rotating_sequence(show_frames=True, save_frames=True, 
                       save_ani=False, show_ani=False,
                       ani_path='./puffer.mp4',
                       frames_basename='./puffer_frame_',
+                      airtemp_cubes=None,
+                      precip_cubes=None,
                       n_steps_round=20,
                       tilt_angle=21.7
                       ):
     plt.interactive(show_frames)
     figure = make_puffersphere_figure()
-    per_image_artists = []
+#    per_image_artists = []
     for (i_plt, lon_rotate) in enumerate(np.linspace(0.0, 360.0, n_steps_round, endpoint=False)):
         print 'rotate=', lon_rotate,' ...'
-        artists = []
         axes = make_puffersphere_axes(
             projection_kwargs={'central_longitude': lon_rotate, 'central_latitude': tilt_angle})
         image = axes.stock_img()
-        artists += [image]
         coast = axes.coastlines()
-        artists += [coast]
-        data = istk.global_pp()
-        contours = qplt.contour(data)
-        artists += contours.collections
+#        data = istk.global_pp()
+        data = airtemp_cubes[i_plt]
+        transparent_blue = (0.0, 0.0, 1.0, 0.25)
+        transparent_red = (1.0, 0.0, 0.0, 0.25)
+        cold_thresh = -10.0
+        cold_fill = iplt.contourf(
+              data,
+              levels=[cold_thresh, cold_thresh],
+              colors=[transparent_blue],
+              extend='min')
+        cold_contour = iplt.contour(
+            data,
+            levels=[cold_thresh], colors=['blue'],
+            linestyles=['solid'])
+        data = precip_cubes[i_plt]
+        precip_thresh = 0.0001
+        precip_fill = iplt.contourf(
+            data,
+            levels=[precip_thresh, precip_thresh],
+            colors=[transparent_red],
+            extend='max')
+        precip_contour = iplt.contour(
+            data,
+            levels=[precip_thresh], colors=['red'],
+            linestyles=['solid'])
         gridlines = draw_gridlines(n_meridians=6)
-        for gridline in gridlines:
-            artists += gridline
+#        artists = []
+#        artists += [coast]
+#        artists += [image]
+#        artists += cold_fill.collections
+#        artists += precip_fill.collections
+#        for gridline in gridlines:
+#            artists += gridline
         if show_frames:
             plt.draw()
         if save_frames:
             save_path = frames_basename+str(i_plt)+'.png'
             save_figure_for_puffersphere(figure, save_path)
-        per_image_artists.append(artists)
+#        per_image_artists.append(artists)
         print '  ..done.'
 
-    if save_ani:
-        print 'Saving to {}...'.format(ani_path)
-        ani = animation.ArtistAnimation(
-            figure, per_image_artists,
-            interval=150, repeat=True, repeat_delay=500
-        )
-        ani.save(ani_path, writer='ffmpeg')
-
-    if show_ani:
-        print 'Showing...'
-        ani = animation.ArtistAnimation(
-            figure, per_image_artists,
-            interval=250, repeat=True, repeat_delay=5000,
-#            blit=True
-        )
-        plt.show(block=True)
+#    if save_ani:
+#        print 'Saving to {}...'.format(ani_path)
+#        ani = animation.ArtistAnimation(
+#            figure, per_image_artists,
+#            interval=150, repeat=True, repeat_delay=500
+#        )
+#        ani.save(ani_path, writer='ffmpeg')
+#
+#    if show_ani:
+#        print 'Showing...'
+#        ani = animation.ArtistAnimation(
+#            figure, per_image_artists,
+#            interval=250, repeat=True, repeat_delay=5000,
+##            blit=True
+#        )
+#        plt.show(block=True)
 
 
 if __name__ == '__main__':
 #    simpletest()
-    rotating_sequence()
+    # get some basic data
+    airtemp_data, precip_data = iris.load_cubes('/data/local/dataZoo/PP/decadal/*.pp', ['air_temperature', 'precipitation_flux'])
+    # create a rolling map from these
+    n_frames = 12
+#    i_images = [int(x) for x in np.linspace(0, airtemp_raw.shape[0], n_frames, endpoint=False)]
+#    airtemp_data = airtemp_raw[i_images]
+    airtemp_data = airtemp_data[0:n_frames+1]
+    precip_data = precip_data[0:n_frames+1]
+    units_degC = iris.unit.Unit('degC')
+    airtemp_data.data = airtemp_data.units.convert(airtemp_data.data, units_degC)
+    airtemp_data.units = units_degC
+    rotating_sequence(airtemp_cubes=airtemp_data, precip_cubes=precip_data, n_steps_round=airtemp_data.shape[0])
+
+
+#>>> for x in pf:
+#...   plt.clf()
+#...   plt.axes(projection=ccrs.PlateCarree());plt.gca().stock_img()
+#...   iplt.contourf(x, levels=[0.0002,0.0002], extend='max', colors=[(1.0,0,0,0.2)])
+#...   print raw_input()
