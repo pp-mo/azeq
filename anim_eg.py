@@ -8,7 +8,7 @@ An animated image
 """
 
 import matplotlib
-matplotlib.use('Agg')
+#matplotlib.use('Agg')
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -31,10 +31,8 @@ for i in range(60):
     im = plt.imshow(f(x, y))
     ims.append([im])
 
-ani = animation.ArtistAnimation(fig, ims, interval=50, # blit=True,
+ani = animation.ArtistAnimation(fig, ims, interval=250, blit=True,
+    repeat=True,
     repeat_delay=1000)
 
-ani.save('anim_eg.gif')
-
-
-#plt.show()
+plt.show()

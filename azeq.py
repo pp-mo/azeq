@@ -6,8 +6,10 @@ Created on Dec 18, 2012
 
 import numpy as np
 
-import shapely.geometry as sgeom
 import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+
+import shapely.geometry as sgeom
 
 import iris
 import iris.plot as iplt
@@ -80,7 +82,7 @@ PUFFERSPHERE_USED_HEIGHT = 1050
 # Set "dpi".
 # In principle arbitrary, as results are rescaled from Figure 'inch' sizes.
 # In practice controls *default linewidths* (as in pixels).
-USE_DPI = 200
+USE_DPI = 150
 
 # Size of main figure.
 _figure_inches = [x*1.0/USE_DPI for x in PUFFERSPHERE_TOTAL_PIXELS]
@@ -115,12 +117,13 @@ def make_puffersphere_figure(**kwargs):
     figure = plt.figure(**kwargs)
     return figure
 
-def make_puffersphere_axes(**kwargs):
+def make_puffersphere_axes(projection_kwargs={}, **kwargs):
     """
     Create a pyplot.Axes for full-globe spherical projection.
 
     Uses Azimuthal Equidistant projection, and 
     """
+
     # Create a central global-map axes to plot on.
     apply_dict_defaults(
         kwargs,
@@ -129,13 +132,13 @@ def make_puffersphere_axes(**kwargs):
 #            'rect': _axes_normalised_rect,
 # NOTE: for plt.axes() : 'figure' is implicit, 'rect' is an arg, not kwarg.
             'frameon': False,
-            'projection': AzEq(),
+            'projection': AzEq(**projection_kwargs),
             'axisbg': 'black',
         })
     axes = plt.axes(_axes_normalised_rect, **kwargs)
     return axes
 
-def plot_figure_for_puffersphere(figure, filename, **savefig_kwargs):
+def save_figure_for_puffersphere(figure, filename, **savefig_kwargs):
     """
     Plot the given Figure in a suitable form for the puffersphere.
     """
@@ -153,24 +156,20 @@ def plot_figure_for_puffersphere(figure, filename, **savefig_kwargs):
     )
 
 def draw_gridlines(n_meridians=12, n_parallels=8, lon_color='#180000', lat_color='#000018'):
-    for longitude in np.linspace(-180.0, +180.0, n_meridians):
-        plt.plot([longitude, longitude], [-90.0, 90.0], color=lon_color, transform=_proj_cyl)
-    for latitude in np.linspace(-90.0, +90.0, n_parallels):
-        plt.plot([-180.0, 180.0], [latitude, latitude], color=lat_color, transform=_proj_cyl)
+    line_artists = []
+    for longitude in np.linspace(-180.0, +180.0, n_meridians, endpoint=False):
+        line_artists += [
+            plt.plot([longitude, longitude], [-90.0, 90.0],
+                     color=lon_color, transform=_proj_cyl)]
+    for latitude in np.linspace(-90.0, +90.0, n_parallels, endpoint=False):
+        line_artists += [
+            plt.plot([-180.0, 180.0], [latitude, latitude],
+                     color=lat_color, transform=_proj_cyl)]
+    return line_artists
 
-
-#axes = plt.axes(projection=AzEq(central_latitude=52.0, central_longitude=0.0))
-#axes = plt.axes(projection=AzEq())
-    #
-    # NOTE: A central *South* pole works ok, other places don't do well, giving
-    # confusion over contouring etc -- even crossing contours ??
-    #
-
-#axes = plt.axes(projection=ccrs.PlateCarree())
-#axes = plt.axes(projection=ccrs.Gnomonic(central_latitude=60.0))
 def simpletest(do_savefig=True, do_showfig=True, savefig_file='./puffer.png'):
     figure = make_puffersphere_figure()
-    axes = make_puffersphere_axes(frameon=True)
+    axes = make_puffersphere_axes()
     axes.stock_img()
     data = istk.global_pp()
     axes.coastlines()
@@ -178,23 +177,61 @@ def simpletest(do_savefig=True, do_showfig=True, savefig_file='./puffer.png'):
     draw_gridlines()
     #axes.coastlines()
     if do_savefig:
-        plot_figure_for_puffersphere(figure=plt.gcf(), filename=savefig_file)
+        save_figure_for_puffersphere(figure=plt.gcf(), filename=savefig_file)
     if do_showfig:
         plt.show()
 
-def rotating_sequence(do_savefig=True, do_showfig=True, savefig_file='./puffer.png'):
+def rotating_sequence(show_frames=False, save_frames=True, 
+                      save_ani=False, show_ani=False,
+                      ani_path='./puffer.mp4',
+                      frames_basename='./puffer_frame_',
+                      n_steps_round=20,
+                      tilt_angle=21.7
+                      ):
+    plt.interactive(show_frames)
     figure = make_puffersphere_figure()
-    axes = make_puffersphere_axes(frameon=True)
-    axes.stock_img()
-    data = istk.global_pp()
-    axes.coastlines()
-    qplt.contour(data)
-    draw_gridlines()
-    if do_savefig:
-        plot_figure_for_puffersphere(figure=plt.gcf(), filename=savefig_file)
-    if do_showfig:
-        plt.show()
+    per_image_artists = []
+    for (i_plt, lon_rotate) in enumerate(np.linspace(0.0, 360.0, n_steps_round, endpoint=False)):
+        print 'rotate=', lon_rotate,' ...'
+        artists = []
+        axes = make_puffersphere_axes(
+            projection_kwargs={'central_longitude': lon_rotate, 'central_latitude': tilt_angle})
+        image = axes.stock_img()
+        artists += [image]
+        coast = axes.coastlines()
+        artists += [coast]
+        data = istk.global_pp()
+        contours = qplt.contour(data)
+        artists += contours.collections
+        gridlines = draw_gridlines(n_meridians=6)
+        for gridline in gridlines:
+            artists += gridline
+        if show_frames:
+            plt.draw()
+        if save_frames:
+            save_path = frames_basename+str(i_plt)+'.png'
+            save_figure_for_puffersphere(figure, save_path)
+        per_image_artists.append(artists)
+        print '  ..done.'
+
+    if save_ani:
+        print 'Saving to {}...'.format(ani_path)
+        ani = animation.ArtistAnimation(
+            figure, per_image_artists,
+            interval=150, repeat=True, repeat_delay=500
+        )
+        ani.save(ani_path, writer='ffmpeg')
+
+    if show_ani:
+        print 'Showing...'
+        ani = animation.ArtistAnimation(
+            figure, per_image_artists,
+            interval=250, repeat=True, repeat_delay=5000,
+#            blit=True
+        )
+        plt.show(block=True)
 
 
 if __name__ == '__main__':
-    simpletest()
+#    simpletest()
+    rotating_sequence()
